@@ -1,3 +1,12 @@
+---
+title: Rag Syslogs
+emoji: 🦀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # RAG System for OS System Logs
 
 A simple, robust RAG system for reliable question answering over OS system logs (Linux, Windows, macOS). Focuses on storing truth, retrieving context, and letting the LLM reason at query time.
