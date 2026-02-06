@@ -205,7 +205,14 @@ class RAGPipeline:
         print(f"Retrieved {len(raw_chunks)} chunks, filtered down to {len(retrieved_chunks)}")
         
         if not retrieved_chunks:
-            return "No relevant log chunks found after filtering.", []
+            # Fallback: If filtering was too strict, take top 2 high-similarity chunks regardless of keywords
+            # This prevents the "No relevant log chunks" error when semantic match is good but keywords differ
+            fallback_chunks = [c for c in raw_chunks if c.get('score', 0) > 0.40][:2]
+            if fallback_chunks:
+                print(f"Applying fallback: Using {len(fallback_chunks)} high-similarity chunks despite keyword mismatch.")
+                retrieved_chunks = fallback_chunks
+            else:
+                return "No relevant log chunks found after filtering. Try rephrasing or ingestion more logs.", []
         
         # Step 3: Generate answer using LLM
         print("Step 3: Generating answer with LLM...")
@@ -267,7 +274,13 @@ class RAGPipeline:
         print(f"Retrieved {len(all_chunks)} total chunks, {len(unique_chunks)} unique")
         
         if not unique_chunks:
-            return "No relevant log chunks found.", [], sub_queries
+            # Fallback for complex path
+            fallback_chunks = [c for c in all_chunks if c.get('score', 0) > 0.45][:3]
+            if fallback_chunks:
+                print(f"Applying complex fallback: Using {len(fallback_chunks)} chunks.")
+                unique_chunks = self._deduplicate_chunks(fallback_chunks)
+            else:
+                return "No relevant log chunks found for the planned sub-queries.", [], sub_queries
         
         # Step 4: Generate evidence-based answer
         print("Step 4: Generating evidence-based answer with LLM...")
@@ -292,18 +305,36 @@ class RAGPipeline:
         filtered = []
         
         # Extract keywords from query (simple stopword removal)
-        stopwords = {'what', 'how', 'when', 'where', 'why', 'who', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'any', 'all', 'many', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by'}
+        stopwords = {'what', 'how', 'when', 'where', 'why', 'who', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'any', 'all', 'many', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'show', 'tell', 'me', 'about', 'find', 'get'}
         query_words = [w.lower().strip('?!.,') for w in query.split() if w.lower().strip('?!.,') not in stopwords and len(w) > 2]
         
+        # Stemming-lite: Handle common plurals/suffixes to avoid literal mismatch
+        stemmed_keywords = []
+        for kw in query_words:
+            stemmed_keywords.append(kw)
+            if kw.endswith('s') and len(kw) > 3: stemmed_keywords.append(kw[:-1]) # errors -> error
+            if kw.endswith('es') and len(kw) > 4: stemmed_keywords.append(kw[:-2]) # processes -> process
+            if kw.endswith('ing') and len(kw) > 5: stemmed_keywords.append(kw[:-3]) # starting -> start
+
+        print(f"Filter keywords: {stemmed_keywords}")
+
         for chunk in chunks:
+            score = chunk.get('score', 1.0)
+            
             # Check 1: Similarity Threshold
-            if chunk.get('score', 1.0) < SIMILARITY_THRESHOLD:
+            if score < SIMILARITY_THRESHOLD:
                 continue
-                
-            # Check 2: Keyword overlap (if query has significant words)
-            if query_words:
+            
+            # Check 2: Strong Semantic Match
+            # If similarity is very high, skip keyword check (AI knows best)
+            if score > 0.55:
+                filtered.append(chunk)
+                continue
+
+            # Check 3: Keyword overlap (if query has significant words)
+            if stemmed_keywords:
                 chunk_text_lower = chunk['text'].lower()
-                has_keyword = any(kw in chunk_text_lower for kw in query_words)
+                has_keyword = any(kw in chunk_text_lower for kw in stemmed_keywords)
                 if not has_keyword:
                     continue
             
