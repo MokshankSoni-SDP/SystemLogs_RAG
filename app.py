@@ -12,11 +12,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize pipeline in session state
-if 'pipeline' not in st.session_state:
-    with st.spinner("Initializing RAG Pipeline (Checking GPU/API)..."):
-        st.session_state.pipeline = RAGPipeline()
-    st.success("Pipeline initialized!")
+# Initialize singleton pipeline (shared across sessions to avoid Qdrant locks)
+@st.cache_resource
+def get_pipeline():
+    return RAGPipeline()
+
+pipeline = get_pipeline()
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -33,7 +34,7 @@ Supported: Linux (Syslog), Windows (Event Logs), macOS.
 # Sidebar for statistics & Configuration
 with st.sidebar:
     st.header("📊 System Status")
-    stats = st.session_state.pipeline.get_stats()
+    stats = pipeline.get_stats()
     
     # Enhanced Device Status
     device_color = "green" if "cuda" in stats["device"] else "red"
@@ -41,7 +42,7 @@ with st.sidebar:
     st.markdown(f"**Compute:** :{device_color}[{stats['device'].upper()} {device_icon}]")
     
     # Collection Status
-    db_info = st.session_state.pipeline.vector_db.get_collection_info()
+    db_info = pipeline.vector_db.get_collection_info()
     st.metric("Indexed Chunks", db_info["count"], help="Total log segments in current active collection")
     
     st.divider()
@@ -50,12 +51,12 @@ with st.sidebar:
     st.subheader("📚 Knowledge Base")
     
     # List collections (with persistence check logic)
-    collections = st.session_state.pipeline.list_collections()
+    collections = pipeline.list_collections()
     if not collections:
         collections = ["log_chunks"]
     
     # Current selection
-    current_coll_name = st.session_state.pipeline.vector_db.collection_name
+    current_coll_name = pipeline.vector_db.collection_name
     
     # Ensure current is in list (handle newly created but not yet physically in DB)
     if current_coll_name and current_coll_name not in collections:
@@ -71,7 +72,7 @@ with st.sidebar:
     
     # Handle switch
     if selected_coll != current_coll_name:
-        st.session_state.pipeline.switch_collection(selected_coll)
+        pipeline.switch_collection(selected_coll)
         st.session_state.messages = [] # Clear chat on switch
         st.rerun()
 
@@ -81,7 +82,7 @@ with st.sidebar:
         if st.button("Create"):
             if new_coll_name and new_coll_name.strip():
                 clean_name = new_coll_name.strip().replace(" ", "_").lower()
-                st.session_state.pipeline.switch_collection(clean_name)
+                pipeline.switch_collection(clean_name)
                 st.session_state.messages = [] # Clear chat on switch
                 st.success(f"Switched to {clean_name}")
                 st.rerun()
@@ -94,7 +95,7 @@ with st.sidebar:
         st.rerun()
 
     if st.button("⚠️ Wipe Database", type="secondary"):
-        st.session_state.pipeline.clear_database()
+        pipeline.clear_database()
         st.session_state.messages = []
         st.success("Database cleared!")
         st.rerun()
@@ -155,7 +156,7 @@ with tab1:
                     if len(raw_questions) > 1:
                         st.markdown(f"#### ❓ Q{i}: {sub_q}")
 
-                    result = st.session_state.pipeline.run(sub_q)
+                    result = pipeline.run(sub_q)
                     answer = result["answer"]
                     sources = result["sources"]
                     usage = result.get("usage_stats", {})
@@ -236,7 +237,7 @@ with tab2:
                 st.write(f"2. Chunking text (Time-aware)...")
                 st.write("3. Generating embeddings (GPU Acceleration)...")
                 
-                result = st.session_state.pipeline.ingest_logs(target_text, source_name, log_type=log_type_code)
+                result = pipeline.ingest_logs(target_text, source_name, log_type=log_type_code)
                 
                 if result["success"]:
                     status.update(label="✅ Ingestion Complete!", state="complete", expanded=False)
