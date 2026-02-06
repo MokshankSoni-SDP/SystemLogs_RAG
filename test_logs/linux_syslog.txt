@@ -1,0 +1,30 @@
+Jan 15 10:23:45 webserver sshd[12345]: Accepted publickey for admin from 192.168.1.100 port 52341 ssh2
+Jan 15 10:23:46 webserver systemd[1]: Started user@1000.service
+Jan 15 10:24:12 webserver kernel: [  120.456789] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+Jan 15 10:25:15 webserver nginx[8765]: 2024/01/15 10:25:15 [error] 8765#8765: *123 connect() failed (111: Connection refused) while connecting to upstream
+Jan 15 10:25:16 webserver systemd[1]: mysql.service: Main process exited, code=exited, status=1/FAILURE
+Jan 15 10:25:45 webserver sshd[12389]: Failed password for root from 203.45.67.89 port 48123 ssh2
+Jan 15 10:25:46 webserver sshd[12389]: Failed password for root from 203.45.67.89 port 48123 ssh2
+Jan 15 10:25:47 webserver sshd[12389]: Failed password for root from 203.45.67.89 port 48123 ssh2
+Jan 15 10:25:48 webserver sshd[12389]: Connection closed by 203.45.67.89 port 48123 [preauth]
+Jan 15 10:26:00 webserver CRON[14567]: (root) CMD (/usr/bin/backup.sh)
+Jan 15 10:27:30 webserver systemd[1]: Starting Daily apt activities...
+Jan 15 10:32:15 webserver kernel: [  450.123456] Out of memory: Kill process 9876 (java) score 654 or sacrifice child
+Jan 15 10:32:16 webserver kernel: [  450.234567] Killed process 9876 (java) total-vm:4123456kB, anon-rss:2345678kB, file-rss:0kB
+Jan 15 10:35:00 webserver docker[5432]: time="2024-01-15T10:35:00.123456789Z" level=warning msg="Failed to connect to containerd"
+Jan 15 10:35:01 webserver docker[5432]: time="2024-01-15T10:35:01.234567890Z" level=info msg="libcontainerd: started new docker-containerd process"
+Jan 15 10:40:23 webserver postfix/smtp[7890]: 1A2B3C4D5E: to=<user@example.com>, relay=mail.example.com[10.0.0.5]:25, delay=0.45, status=sent
+Jan 15 10:45:12 webserver systemd[1]: Starting Cleanup of Temporary Directories...
+Jan 15 10:45:13 webserver systemd-tmpfiles[15678]: [/usr/lib/tmpfiles.d/tmp.conf:13] Duplicate line for path "/tmp", ignoring
+Jan 15 10:50:00 webserver cron[1234]: (CRON) INFO (pidfile fd = 3)
+Jan 15 10:55:30 webserver apache2[3456]: [Tue Jan 15 10:55:30.123456 2024] [mpm_prefork:notice] [pid 3456] AH00163: Apache/2.4.41 (Ubuntu) configured
+Jan 15 11:00:00 webserver dhclient[2345]: DHCPREQUEST of 192.168.1.50 on eth0 to 192.168.1.1 port 67
+Jan 15 11:00:01 webserver dhclient[2345]: DHCPACK of 192.168.1.50 from 192.168.1.1
+Jan 15 11:05:15 webserver systemd[1]: session-15.scope: Succeeded.
+Jan 15 11:10:00 webserver sshd[16789]: Accepted publickey for deploy from 10.0.0.100 port 34567 ssh2
+Jan 15 11:10:30 webserver sudo: deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/systemctl restart nginx
+Jan 15 11:10:31 webserver systemd[1]: Stopping A high performance web server and a reverse proxy server...
+Jan 15 11:10:32 webserver systemd[1]: nginx.service: Succeeded.
+Jan 15 11:10:33 webserver systemd[1]: Stopped A high performance web server and a reverse proxy server.
+Jan 15 11:10:34 webserver systemd[1]: Starting A high performance web server and a reverse proxy server...
+Jan 15 11:10:35 webserver systemd[1]: Started A high performance web server and a reverse proxy server.

@@ -1,0 +1,18 @@
+Jan 15 10:23:45 Macs-MacBook-Pro kernel[0]: AppleKeyStore:Sending lock change 0
+Jan 15 10:23:46 Macs-MacBook-Pro UserEventAgent[234]: Captive: CNPluginHandler en0: Evaluating
+Jan 15 10:24:12 Macs-MacBook-Pro com.apple.xpc.launchd[1]: (com.apple.mdworker.shared.05000000-0300-0000-0000-000000000000[5678]) Service exited with abnormal code: 1
+Jan 15 10:25:15 Macs-MacBook-Pro loginwindow[456]: Login Window - Returned from Security Agent
+Jan 15 10:25:16 Macs-MacBook-Pro com.apple.SecurityServer[123]: Session 100004 created
+Jan 15 10:26:00 Macs-MacBook-Pro syslogd[789]: ASL Sender Statistics
+Jan 15 10:27:30 Macs-MacBook-Pro softwareupdated[890]: SoftwareUpdate: Scanning for new updates
+Jan 15 10:32:15 Macs-MacBook-Pro kernel[0]: ARPT: 123456.789012: wl0: wlc_bmac_recv: out of order TSF detected, expected 0x000000abcd123456, received 0x000000abcd123457
+Jan 15 10:35:00 Macs-MacBook-Pro WindowServer[234]: disable_update_timeout: UI updates were forcibly disabled by application "Safari" for over 1.00 seconds
+Jan 15 10:40:23 Macs-MacBook-Pro com.apple.xpc.launchd[1]: (com.apple.imfoundation.IMRemoteURLConnectionAgent) Service only ran for 0 seconds. Pushing respawn out by 10 seconds.
+Jan 15 10:45:12 Macs-MacBook-Pro apsd[345]: Received push for enabled topic 'com.apple.icloud-container.clouddocs' with payload '<MACH_ADDR>' on connection <MACH_ADDR>
+Jan 15 10:50:00 Macs-MacBook-Pro com.apple.launchd.peruser.501[567]: (com.apple.cloudd[8901]) Service exited due to SIGKILL | sent by WindowServer[234]
+Jan 15 10:55:30 Macs-MacBook-Pro sandboxd[890]: ([1234]) mdworker(1234) deny(1) file-read-data /Users/admin/Documents/private.txt
+Jan 15 11:00:00 Macs-MacBook-Pro kernel[0]: AFP_VFS afpfs_mount: /Volumes/SharedDrive, pid 5678
+Jan 15 11:05:15 Macs-MacBook-Pro com.apple.SecurityServer[123]: Session 100005 destroyed
+Jan 15 11:10:00 Macs-MacBook-Pro sshd[2345]: Accepted publickey for admin from 192.168.1.100 port 52341 ssh2: RSA SHA256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+Jan 15 11:10:30 Macs-MacBook-Pro sudo[3456]:    admin : TTY=ttys000 ; PWD=/Users/admin ; USER=root ; COMMAND=/usr/sbin/system_profiler SPHardwareDataType
+Jan 15 11:15:00 Macs-MacBook-Pro com.apple.xpc.launchd[1]: System shutdown now = 0
