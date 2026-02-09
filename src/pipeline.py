@@ -3,7 +3,7 @@ RAG Pipeline module.
 Orchestrates the entire workflow: preprocessing, chunking, embedding, retrieval, and answering.
 Supports both simple and complex query paths.
 """
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 from .preprocessor import preprocess_logs
 from .chunker import chunk_preprocessed_logs
@@ -13,6 +13,10 @@ from .llm_client import LLMClient
 from .query_classifier import classify_query
 from .query_planner import generate_sub_queries
 from .config import TOP_K, TOP_K_SIMPLE, TOP_K_COMPLEX, SIMILARITY_THRESHOLD
+from .log_archiver import persist_raw_logs
+from .preprocessor import detect_os_hint, preprocess_logs
+from .intent_planner import generate_execution_plan
+from .scan_operations import execute_plan
 
 
 class RAGPipeline:
@@ -87,6 +91,23 @@ class RAGPipeline:
         """
         print(f"\n=== Starting log ingestion for: {source_name} (Type: {log_type}) ===")
         
+        # Step 0: Archive raw logs (New Requirement)
+        try:
+            # Quick OS detection on first few lines
+            os_hint = "unknown"
+            for line in log_text.splitlines()[:20]:
+                if line.strip():
+                    hint = detect_os_hint(line)
+                    if hint != "unknown":
+                        os_hint = hint
+                        break
+            
+            # Persist to disk
+            saved_path = persist_raw_logs(log_text, source_name, os_hint, log_type)
+            print(f"✅ Raw logs archived at: {saved_path}")
+        except Exception as e:
+            print(f"⚠️ Warning: Checkpoint archival failed: {e}")
+
         # Step 1: Preprocess the logs
         print(f"Step 1: Preprocessing logs ({log_type} mode)...")
         preprocessed_records = preprocess_logs(log_text, log_type=log_type)
@@ -134,7 +155,7 @@ class RAGPipeline:
     
     def query(self, question: str, top_k: int = None) -> Tuple[str, List[Dict], Dict]:
         """
-        Answer a question using RAG with dual query paths (simple/complex).
+        Answer a question using three-way routing (simple/complex RAG, or scan mode).
         
         Args:
             question: User's question
@@ -142,7 +163,7 @@ class RAGPipeline:
             
         Returns:
             Tuple of (answer, retrieved_chunks, metadata)
-            metadata includes: query_type, sub_queries (if complex)
+            metadata includes: query_type, sub_queries (if complex), execution_plan (if scan)
         """
         print(f"\n=== Processing query: {question} ===")
         
@@ -154,30 +175,227 @@ class RAGPipeline:
                 {"query_type": "none"}
             )
         
-        # Classify query
-        query_type = classify_query(question)
+        # Two-stage classification (keywords + LLM)
+        llm_client = self._get_llm_client()
+        query_type = classify_query(question, llm_client)
         print(f"Query classified as: {query_type.upper()}")
         
-        # Adaptive retrieval top_k
-        if top_k is None:
-            effective_top_k = TOP_K_COMPLEX if query_type == "complex" else TOP_K_SIMPLE
-        else:
-            effective_top_k = top_k
-            
-        print(f"Adaptive top_k set to: {effective_top_k}")
-        
-        metadata = {"query_type": query_type, "top_k": effective_top_k}
+        metadata = {"query_type": query_type}
         
         # Route to appropriate query path
-        if query_type == "simple":
+        if query_type == "scan":
+            # Scan-and-Summarize path (deterministic)
+            answer, scan_metadata = self._scan_query_path(question)
+            metadata.update(scan_metadata)
+            retrieved_chunks = []  # Scan mode doesn't use chunks
+        elif query_type == "simple":
+            # Simple RAG path
+            effective_top_k = top_k or TOP_K_SIMPLE
+            metadata["top_k"] = effective_top_k
+            print(f"Adaptive top_k set to: {effective_top_k}")
             answer, retrieved_chunks = self._simple_query_path(question, effective_top_k)
         else:
+            # Complex RAG path
+            effective_top_k = top_k or TOP_K_COMPLEX
+            metadata["top_k"] = effective_top_k
+            print(f"Adaptive top_k set to: {effective_top_k}")
             answer, retrieved_chunks, sub_queries = self._complex_query_path(question, effective_top_k)
             metadata["sub_queries"] = sub_queries
         
         print("=== Query processing complete ===\n")
         
         return answer, retrieved_chunks, metadata
+    
+    def _scan_query_path(self, question: str) -> Tuple[str, Dict]:
+        """
+        Scan-and-Summarize path: LLM planning -> Deterministic execution -> LLM summary.
+        
+        Args:
+            question: User's question requiring global visibility or aggregation
+            
+        Returns:
+            Tuple of (answer, metadata_dict)
+        """
+        print("-> Using SCAN-AND-SUMMARIZE path")
+        
+        # Step 1: Generate execution plan using LLM
+        print("Step 1: Generating execution plan with LLM...")
+        try:
+            llm_client = self._get_llm_client()
+            plan = generate_execution_plan(question, llm_client)
+            print(f"Generated plan with {len(plan['steps'])} step(s)")
+            for i, step in enumerate(plan['steps'], 1):
+                print(f"  Step {i}: {step['operation']}")
+        except ValueError as e:
+            return f"Failed to generate execution plan: {e}", {"error": str(e)}
+        except Exception as e:
+            return f"Error in planning: {e}", {"error": str(e)}
+        
+        # Step 2: Load preprocessed logs from raw_logs directory
+        print("Step 2: Loading archived raw logs...")
+        logs = self._load_preprocessed_logs()
+        
+        if not logs:
+            return "No archived logs found. Please ingest logs first.", {"error": "no_logs"}
+        
+        print(f"Loaded {len(logs)} preprocessed log records")
+        
+        # Step 3: Execute plan deterministically
+        print("Step 3: Executing plan...")
+        try:
+            result = execute_plan(logs, plan)
+            print(f"Execution complete. Result type: {type(result).__name__}")
+        except Exception as e:
+            return f"Execution failed: {e}", {"error": str(e), "plan": plan}
+        
+        # Step 4: Summarize results with LLM
+        print("Step 4: Summarizing results with LLM...")
+        try:
+            summary = self._summarize_scan_results(result, question, plan, llm_client)
+        except Exception as e:
+            return f"Summarization failed: {e}", {"error": str(e), "raw_result": str(result)[:500]}
+        
+        metadata = {
+            "execution_plan": plan,
+            "log_count": len(logs),
+            "result_type": type(result).__name__
+        }
+        
+        return summary, metadata
+    
+    def _load_preprocessed_logs(self) -> List[Dict]:
+        """
+        Load and preprocess logs from raw_logs directory.
+        
+        Returns:
+            List of preprocessed log records
+        """
+        from pathlib import Path
+        
+        all_logs = []
+        raw_logs_dir = Path("raw_logs")
+        
+        if not raw_logs_dir.exists():
+            print("Warning: raw_logs directory does not exist")
+            return []
+        
+        # Find all .log files
+        log_files = list(raw_logs_dir.rglob("*.log"))
+        
+        if not log_files:
+            print("Warning: No .log files found in raw_logs/")
+            return []
+        
+        print(f"Found {len(log_files)} archived log file(s)")
+        
+        for log_file in log_files:
+            try:
+                raw_text = log_file.read_text(encoding="utf-8")
+                
+                # Detect log type from path (system or container)
+                log_type = "container" if "container" in str(log_file) else "system"
+                
+                # Preprocess
+                records = preprocess_logs(raw_text, log_type=log_type)
+                all_logs.extend(records)
+            except Exception as e:
+                print(f"Warning: Failed to load {log_file}: {e}")
+        
+        # Sort by timestamp
+        all_logs.sort(key=lambda x: x.get("timestamp", ""))
+        
+        return all_logs
+    
+    def _summarize_scan_results(self, result: Any, question: str, plan: Dict, llm_client) -> str:
+        """
+        Use LLM to summarize scan operation results in natural language.
+        
+        Args:
+            result: Result from scan operations (list, dict, etc.)
+            question: Original user question
+            plan: Execution plan
+            llm_client: LLM client instance
+            
+        Returns:
+            Natural language summary
+        """
+        operation = plan['steps'][0]['operation'] if plan['steps'] else 'unknown'
+        
+        # Format result for LLM
+        if isinstance(result, list):
+            if len(result) == 0:
+                formatted_result = "No results found."
+            elif len(result) <= 20:
+                formatted_result = "\\n".join(str(item) for item in result)
+            else:
+                # Truncate long lists
+                formatted_result = "\\n".join(str(item) for item in result[:20])
+                formatted_result += f"\\n... and {len(result) - 20} more items"
+        elif isinstance(result, dict):
+            formatted_result = "\\n".join(f"{k}: {v}" for k, v in list(result.items())[:20])
+        else:
+            formatted_result = str(result)[:1000]
+        
+        # Different prompts based on operation type
+        if operation in ["list_unique_errors", "get_recent_events"]:
+            prompt = f"""You are given a chronological list of log events.
+Summarize them clearly for the user.
+
+User question: {question}
+
+Results:
+{formatted_result}
+
+Provide a clear, concise answer. Do not invent information."""
+        
+        elif operation == "count_occurrences":
+            prompt = f"""You are given counts of log events.
+Summarize the most important patterns.
+
+User question: {question}
+
+Results (format: item, count):
+{formatted_result}
+
+Provide a clear, concise answer focusing on patterns."""
+        
+        elif operation == "bucket_by_time":
+            prompt = f"""You are given event counts over time.
+Describe trends qualitatively.
+
+User question: {question}
+
+Results (format: timestamp: count):
+{formatted_result}
+
+Provide a clear, concise answer about trends. Do not calculate statistics."""
+        
+        else:
+            prompt = f"""Summarize these log analysis results for the user.
+
+User question: {question}
+
+Results:
+{formatted_result}
+
+Provide a clear, concise answer."""
+        
+        try:
+            # Create a fake chunk with the results as context
+            result_chunk = {
+                "chunk_id": "scan_results",
+                "text": formatted_result,
+                "source": "scan_operation",
+                "score": 1.0
+            }
+            
+            # Use the appropriate prompt based on operation
+            modified_question = f"{question}\\n\\nContext: {prompt.split('Results:')[0]}"
+            
+            return llm_client.answer_question([result_chunk], modified_question)
+        except:
+            # Fallback: simple formatting
+            return f"Here are the results:\\n\\n{formatted_result}"
     
     def _simple_query_path(self, question: str, top_k: int) -> Tuple[str, List[Dict]]:
         """

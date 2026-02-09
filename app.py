@@ -113,6 +113,16 @@ with tab1:
             # If assistant, show extra details if stored
             if message["role"] == "assistant" and "details" in message:
                 details = message["details"]
+                
+                # Show Query Type Badge
+                q_type = details.get("query_type", "unknown")
+                if q_type == "simple":
+                    st.caption("⚡ Executed via **Simple RAG**")
+                elif q_type == "complex":
+                    st.caption("🧠 Executed via **Complex RAG** (refer to sub-queries below)")
+                elif q_type == "scan":
+                    st.caption("🔍 Executed via **Scan & Summarize** (deterministic)")
+                
                 # Sources
                 if details.get("sources"):
                     with st.expander(f"📚 Evidence ({len(details['sources'])} chunks)"):
@@ -164,7 +174,20 @@ with tab1:
                     st.markdown(answer)
                     
                     # Store details for history
-                    msg_details = {"sources": sources, "usage": usage}
+                    msg_details = {
+                        "sources": sources, 
+                        "usage": usage,
+                        "query_type": result["metadata"].get("query_type", "simple")
+                    }
+                    
+                    # Show Badge immediately
+                    q_type = msg_details["query_type"]
+                    if q_type == "simple":
+                        st.caption("⚡ Executed via **Simple RAG**")
+                    elif q_type == "complex":
+                        st.caption("🧠 Executed via **Complex RAG** (refer to sub-queries below)")
+                    elif q_type == "scan":
+                        st.caption("🔍 Executed via **Scan & Summarize** (deterministic)")
                     
                     # Append strictly to history (one message per sub-question to keep it granular? 
                     # OR one big message? Let's do one big message for the session, but display incrementally)

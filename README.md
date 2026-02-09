@@ -23,6 +23,7 @@ This system:
 ## 🚩 Features
 
 - **OS-Agnostic Preprocessing**: Handles Linux, Windows, and macOS logs with unified normalization
+- **Raw Log Archival**: Automatically saves raw logs to `raw_logs/` for audit and future re-processing
 - **Time-Aware Chunking**: Sequential chunking with intelligent boundaries (line count, time gaps, multi-line events)
 - **Dual Query Paths**: 
   - Simple queries → Direct retrieval
