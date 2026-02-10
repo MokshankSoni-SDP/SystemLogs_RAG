@@ -51,37 +51,39 @@ def count_occurrences(
     logs: List[Dict], 
     group_by: str = "message", 
     level: Optional[str] = None, 
-    limit: Optional[int] = None,
-    semantic_errors: bool = True
+    limit: Optional[int] = None
 ) -> List[Tuple[str, int]]:
     """
     Count occurrences of log events, grouped by a specified field.
     
+    Uses SEMANTIC error detection for ERROR level (not strict level matching).
+    This ensures consistent error counting across the system.
+    
     Args:
         logs: List of preprocessed log records
         group_by: Field to group by ("message", "process", "level")
-        level: Optional filter by log level ("ERROR" uses semantic detection if semantic_errors=True)
-        limit: Optional limit on number of results
-        semantic_errors: If True and level="ERROR", use semantic error detection
+        level: Optional filter by log level (ERROR uses semantic detection)
+        limit: Optional limit on number of results (None = no limit)
         
     Returns:
         List of (value, count) tuples, sorted by frequency (descending)
     """
     # Apply filtering
-    if level == "ERROR" and semantic_errors:
-        # Use semantic error detection
-        filtered = [log for log in logs if is_error(log)]
+    if level == "ERROR":
+        # ALWAYS use semantic detection for errors (consistent with count_error_type)
+        filtered = [log for log in logs if detect_error_type(log) is not None]
     elif level is not None:
-        # Strict level matching
+        # Strict level matching for other levels
         filtered = [log for log in logs if log.get("level") == level]
     else:
         filtered = logs
     
+    # Group by field and return most common
     counter = Counter(log.get(group_by, "unknown") for log in filtered)
-    return counter.most_common(limit)
+    return counter.most_common(limit)  # limit=None is safe here
 
 
-def count_error_type(logs: List[Dict], error_type: str) -> Dict[str, int]:
+def count_error_type(logs: List[Dict], error_type: str) -> int:
     """
     Count occurrences of a specific semantic error type.
     
@@ -89,30 +91,25 @@ def count_error_type(logs: List[Dict], error_type: str) -> Dict[str, int]:
     not log levels. Supports all error types from ERROR_SIGNATURES
     plus "unknown_error" fallback.
     
+    IMPORTANT: Returns ONLY the matched count, not an aggregate object.
+    This prevents abstraction layer mixing where the LLM would treat
+    aggregate data as evidence.
+    
     Args:
         logs: List of preprocessed log records
         error_type: Semantic error category (e.g., "disk_full", "out_of_memory")
         
     Returns:
-        Dictionary with counts: {"matched": N, "total_errors": M}
+        int: Number of logs matching this error_type
     """
     matched_count = 0
-    total_errors = 0
     
     for log in logs:
-        detected_type = detect_error_type(log)
-        
-        if detected_type is not None:
-            total_errors += 1
-            
-            if detected_type == error_type:
-                matched_count += 1
+        if detect_error_type(log) == error_type:
+            matched_count += 1
     
-    return {
-        "matched": matched_count,
-        "total_errors": total_errors,
-        "error_type": error_type
-    }
+    return matched_count
+
 
 
 def filter_by_process(logs: List[Dict], process: str) -> List[Dict]:

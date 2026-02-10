@@ -306,96 +306,154 @@ class RAGPipeline:
         
         return all_logs
     
-    def _summarize_scan_results(self, result: Any, question: str, plan: Dict, llm_client) -> str:
+    def _format_scan_stats(self, result: Any, operation: str, params: Dict) -> Dict:
         """
-        Use LLM to summarize scan operation results in natural language.
+        Convert scan result to structured stats (prevents abstraction layer mixing).
+        
+        This ensures the LLM never sees ambiguous aggregate objects that could
+        be misinterpreted as log evidence.
         
         Args:
-            result: Result from scan operations (list, dict, etc.)
+            result: Raw scan operation result
+            operation: Operation name
+            params: Operation parameters
+            
+        Returns:
+            Structured stats dictionary
+        """
+        import json
+        
+        # Handle error_type parameter (count_error_type result)
+        if "error_type" in params:
+            return {
+                "type": "error_count",
+                "error_type": params["error_type"],
+                "count": result  # Just the int
+            }
+        
+        # Handle count_occurrences
+        if operation == "count_occurrences":
+            if isinstance(result, list):
+                return {
+                    "type": "frequency_distribution",
+                    "counts": [{"item": str(item), "count": count} for item, count in result]
+                }
+        
+        # Handle single log events
+        if operation in ["get_first_event", "get_last_event"]:
+            if result is None:
+                return {"type": "single_log", "log": None}
+            return {
+                "type": "single_log",
+                "log": {
+                    "timestamp": result.get("timestamp"),
+                    "level": result.get("level"),
+                    "process": result.get("process"),
+                    "message": result.get("message", "")[:200]  # Truncate message
+                }
+            }
+        
+        # Handle unique lists
+        if operation == "list_unique_errors":
+            return {
+                "type": "unique_items",
+                "items": result[:50] if isinstance(result, list) else []
+            }
+        
+        # Handle time series
+        if operation == "bucket_by_time":
+            if isinstance(result, dict):
+                return {
+                    "type": "time_series",
+                    "buckets": [{"time": k, "count": v} for k, v in list(result.items())[:50]]
+                }
+        
+        # Handle peak detection
+        if operation == "find_peak":
+            if isinstance(result, tuple) and len(result) == 2:
+                return {
+                    "type": "peak_detection",
+                    "peak_time": result[0],
+                    "peak_count": result[1]
+                }
+        
+        # Handle ranking
+        if operation == "rank_by":
+            if isinstance(result, list):
+                return {
+                    "type": "ranked_items",
+                    "items": [{"item": str(item), "count": count} for item, count in result]
+                }
+        
+        # Handle raw log lists
+        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+            # List of log dicts
+            return {
+                "type": "log_list",
+                "count": len(result),
+                "logs": [
+                    {
+                        "timestamp": log.get("timestamp"),
+                        "level": log.get("level"),
+                        "process": log.get("process"),
+                        "message": log.get("message", "")[:200]
+                    }
+                    for log in result[:20]  # Limit to 20 logs
+                ]
+            }
+        
+        # Fallback for simple types
+        if isinstance(result, int):
+            return {"type": "count", "value": result}
+        
+        # Catch-all
+        return {"type": "raw", "data": str(result)[:500]}
+    
+    def _summarize_scan_results(self, result: Any, question: str, plan: Dict, llm_client) -> str:
+        """
+        Phase B: Use LLM to explain (NOT infer) scan stats.
+        
+        Args:
+            result: Result from scan operations
             question: Original user question
             plan: Execution plan
             llm_client: LLM client instance
             
         Returns:
-            Natural language summary
+            Natural language summary (explanation only, no inference)
         """
+        import json
+        
         operation = plan['steps'][0]['operation'] if plan['steps'] else 'unknown'
+        params = plan['steps'][0].get('parameters', {}) if plan['steps'] else {}
         
-        # Format result for LLM
-        if isinstance(result, list):
-            if len(result) == 0:
-                formatted_result = "No results found."
-            elif len(result) <= 20:
-                formatted_result = "\\n".join(str(item) for item in result)
-            else:
-                # Truncate long lists
-                formatted_result = "\\n".join(str(item) for item in result[:20])
-                formatted_result += f"\\n... and {len(result) - 20} more items"
-        elif isinstance(result, dict):
-            formatted_result = "\\n".join(f"{k}: {v}" for k, v in list(result.items())[:20])
-        else:
-            formatted_result = str(result)[:1000]
+        # Phase A: Format as structured stats (no ambiguity)
+        stats = self._format_scan_stats(result, operation, params)
         
-        # Different prompts based on operation type
-        if operation in ["list_unique_errors", "get_recent_events"]:
-            prompt = f"""You are given a chronological list of log events.
-Summarize them clearly for the user.
+        # Phase B: Controlled prompt that FORBIDS inference
+        prompt = f"""You are given PRE-COMPUTED STATISTICS from system logs.
+
+STRICT RULES:
+- DO NOT infer new facts
+- DO NOT reinterpret numbers as errors  
+- DO NOT calculate or count anything
+- DO NOT treat count values as error messages
+- ONLY explain the provided statistics in natural language
 
 User question: {question}
 
-Results:
-{formatted_result}
+Structured results:
+{json.dumps(stats, indent=2)}
 
-Provide a clear, concise answer. Do not invent information."""
-        
-        elif operation == "count_occurrences":
-            prompt = f"""You are given counts of log events.
-Summarize the most important patterns.
-
-User question: {question}
-
-Results (format: item, count):
-{formatted_result}
-
-Provide a clear, concise answer focusing on patterns."""
-        
-        elif operation == "bucket_by_time":
-            prompt = f"""You are given event counts over time.
-Describe trends qualitatively.
-
-User question: {question}
-
-Results (format: timestamp: count):
-{formatted_result}
-
-Provide a clear, concise answer about trends. Do not calculate statistics."""
-        
-        else:
-            prompt = f"""Summarize these log analysis results for the user.
-
-User question: {question}
-
-Results:
-{formatted_result}
-
-Provide a clear, concise answer."""
+Explain the result clearly and concisely."""
         
         try:
-            # Create a fake chunk with the results as context
-            result_chunk = {
-                "chunk_id": "scan_results",
-                "text": formatted_result,
-                "source": "scan_operation",
-                "score": 1.0
-            }
-            
-            # Use the appropriate prompt based on operation
-            modified_question = f"{question}\\n\\nContext: {prompt.split('Results:')[0]}"
-            
-            return llm_client.answer_question([result_chunk], modified_question)
-        except:
+            # Use answer_question but with controlled prompt
+            return llm_client.answer_question([], prompt)
+        except Exception as e:
             # Fallback: simple formatting
-            return f"Here are the results:\\n\\n{formatted_result}"
+            return f"Analysis result: {json.dumps(stats, indent=2)}"
+    
     
     def _simple_query_path(self, question: str, top_k: int) -> Tuple[str, List[Dict]]:
         """
