@@ -22,6 +22,14 @@ Available operations:
 4. get_recent_events - Get N most recent events
 5. get_before_after_context - Get surrounding context for a process
 6. bucket_by_time - Group events by time windows (hour/day)
+7. sort_by_time - Sort events chronologically (asc/desc)
+8. get_first_event - Get earliest event of a type
+9. get_last_event - Get latest event of a type
+10. filter_by_time_range - Filter by start/end time
+11. find_peak - Find peak timestamp in time buckets (use after bucket_by_time)
+12. rank_by - Rank and limit results (use after count_occurrences)
+13. filter_by_os - Filter by OS type (linux/windows/macos)
+14. exclude_process - Exclude specific process
 
 Log fields available:
 - timestamp (ISO-8601 format)
@@ -49,11 +57,23 @@ Output format (strict JSON):
         "group_by": "message|process|level|null",
         "limit": number|null,
         "time_bucket": "hour|day|null",
-        "window_size": number|null
+        "window_size": number|null,
+        "order": "asc|desc|null",
+        "start_time": "ISO-8601|HH:MM:SS|null",
+        "end_time": "ISO-8601|HH:MM:SS|null",
+        "os_hint": "linux|windows|macos|null",
+        "reverse": true|false|null,
+        "error_type": "string|null"
       }}
     }}
   ]
 }}
+
+Special Notes:
+- Use "error_type" parameter for semantic error classification (e.g., "disk_full", "out_of_memory")
+- Available error types: disk_full, out_of_memory, permission_denied, timeout, connection_failed, 
+  authentication_failed, process_crash, service_failure, and more
+- Extract error_type from user phrases like "Disk full" → "disk_full"
 
 Examples:
 
@@ -71,6 +91,24 @@ A: {{"steps": [{{"operation": "get_recent_events", "parameters": {{"level": "ERR
 
 Q: "Count errors by process"
 A: {{"steps": [{{"operation": "count_occurrences", "parameters": {{"level": "ERROR", "group_by": "process", "limit": null}}}}]}}
+
+Q: "Show me the first error that occurred"
+A: {{"steps": [{{"operation": "get_first_event", "parameters": {{"level": "ERROR"}}}}]}}
+
+Q: "When did errors peak?"
+A: {{"steps": [{{"operation": "bucket_by_time", "parameters": {{"level": "ERROR", "time_bucket": "hour"}}}}, {{"operation": "find_peak", "parameters": {{}}}}]}}
+
+Q: "Top 3 processes with errors"
+A: {{"steps": [{{"operation": "count_occurrences", "parameters": {{"level": "ERROR", "group_by": "process", "limit": null}}}}, {{"operation": "rank_by", "parameters": {{"limit": 3}}}}]}}
+
+Q: "Errors before midnight"
+A: {{"steps": [{{"operation": "filter_by_time_range", "parameters": {{"end_time": "00:00:00", "start_time": null}}}}, {{"operation": "list_unique_errors", "parameters": {{}}}}]}}
+
+Q: "How many times did 'Disk full' error occur?"
+A: {{"steps": [{{"operation": "count_occurrences", "parameters": {{"error_type": "disk_full"}}}}]}}
+
+Q: "Count out of memory errors"
+A: {{"steps": [{{"operation": "count_occurrences", "parameters": {{"error_type": "out_of_memory"}}}}]}}
 
 Now generate the plan for the user's question above.
 """
@@ -150,7 +188,15 @@ def validate_plan(plan: Dict) -> bool:
         "filter_by_process",
         "get_recent_events",
         "get_before_after_context",
-        "bucket_by_time"
+        "bucket_by_time",
+        "sort_by_time",
+        "get_first_event",
+        "get_last_event",
+        "filter_by_time_range",
+        "find_peak",
+        "rank_by",
+        "filter_by_os",
+        "exclude_process"
     }
     
     for step in plan["steps"]:

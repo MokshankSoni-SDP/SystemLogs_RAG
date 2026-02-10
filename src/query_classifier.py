@@ -35,27 +35,76 @@ COMPLEX_QUERY_KEYWORDS = [
 ]
 
 
-LLM_INTENT_PROMPT = """You are an intent classifier for a log analysis system.
-Your task is to decide HOW a question should be answered.
-Do NOT answer the question. Do NOT infer any facts.
+# LLM_INTENT_PROMPT = """You are an intent classifier for a log analysis system.
+# Your task is to decide HOW a question should be answered.
+# Do NOT answer the question. Do NOT infer any facts.
+
+# There are ONLY two valid execution modes:
+
+# 1. "RAG"
+#    - Use when the question can be answered by retrieving a small number of log chunks
+#    - Examples: specific errors, examples, explanations, "why" questions
+
+# 2. "SCAN"
+#    - Use when the question requires counting, aggregation, trends, ordering, or full-log analysis
+#    - Examples: totals, most frequent, time distribution, summaries, "what errors are present"
+
+# User question:
+# "{question}"
+
+# Return ONLY valid JSON in this format:
+# {{
+#   "execution_mode": "RAG" | "SCAN",
+#   "reason": "one short sentence"
+# }}
+# """
+LLM_INTENT_PROMPT="""
+You are an INTENT CLASSIFIER for a log analytics system.
+
+Your job is to decide HOW a question must be answered.
+You MUST NOT answer the question.
+You MUST NOT infer any facts from logs.
 
 There are ONLY two valid execution modes:
 
-1. "RAG"
-   - Use when the question can be answered by retrieving a small number of log chunks
-   - Examples: specific errors, examples, explanations, "why" questions
+────────────────────────
+MODE 1: "RAG"
+────────────────────────
+Use RAG ONLY if:
+- The question can be answered by retrieving ONE OR A FEW specific log chunks
+- The answer does NOT require scanning the full log history
+- The answer does NOT require counting, ordering, ranking, or time comparison
 
-2. "SCAN"
-   - Use when the question requires counting, aggregation, trends, ordering, or full-log analysis
-   - Examples: totals, most frequent, time distribution, summaries, "what errors are present"
+Typical RAG questions:
+- "Show an example of an error"
+- "Why did process X fail?"
+- "Explain this error message"
+- "What does this log mean?"
+
+────────────────────────
+MODE 2: "SCAN"
+────────────────────────
+You MUST choose SCAN if the question requires ANY of the following:
+- Counting or totals (how many, number of, frequency)
+- Ranking or comparison (most, least, first, last, earliest, latest, peak)
+- Ordering across time (first occurred, last occurred, before/after)
+- Trends or distribution (over time, clustered, spread, increasing)
+- Global inspection (all errors, errors present in the logs, overall summary)
+- Absence or existence checks (were there any errors, did X ever happen)
+
+IMPORTANT RULE (DO NOT BREAK):
+If answering the question requires examining the FULL LOG DATASET
+instead of a few retrieved chunks → it is SCAN.
 
 User question:
 "{question}"
 
-Return ONLY valid JSON in this format:
+Think carefully and classify.
+
+Return ONLY valid JSON in this exact format:
 {{
   "execution_mode": "RAG" | "SCAN",
-  "reason": "one short sentence"
+  "reason": "One concise sentence explaining why this mode is required"
 }}
 """
 
