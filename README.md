@@ -551,7 +551,7 @@ Improved semantic retrieval — but aggregation still failed.
 
 # 6. Phase 4 — Fundamental Realization
 
-We identified a conceptual mismatch:
+I identified a conceptual mismatch:
 
 | Documents       | Logs                    |
 | --------------- | ----------------------- |
@@ -794,14 +794,3 @@ Every answer is:
 * Deterministic (when required)
 * Grounded in evidence 
 
----
-
-If you want next, I can:
-
-* Add an Abstract + Keywords section
-* Add a Mermaid architecture diagram
-* Add a comparison table vs pure RAG
-* Convert this into a polished research-report style version
-* Or generate a 5–7 minute mentor presentation script
-
-Just tell me which format you need next.
